@@ -160,7 +160,7 @@ export default function Dashboard() {
   return (
     <div className="container">
       <div className="header">
-        <h1>🌡️ Monitoring Ruang Server</h1>
+        <h1>🌡️ Monitoring Kos Ridho</h1>
         <p className="subtitle">Sistem Pemantauan Suhu, Kelembapan & Kualitas Udara Real-time</p>
       </div>
 
