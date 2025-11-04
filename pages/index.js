@@ -27,8 +27,6 @@ export default function Dashboard() {
 
   const parseDate = (dateStr) => {
     if (!dateStr || dateStr === '-') return null;
-    
-    // Format: DD/MM/YYYY atau D/M/YYYY
     const parts = dateStr.split('/');
     if (parts.length === 3) {
       const day = parseInt(parts[0]);
@@ -41,8 +39,6 @@ export default function Dashboard() {
 
   const parseTime = (timeStr) => {
     if (!timeStr || timeStr === '-') return null;
-    
-    // Format: HH:MM:SS atau HH:MM
     const parts = timeStr.split(':');
     if (parts.length >= 2) {
       const hours = parseInt(parts[0]);
@@ -56,7 +52,6 @@ export default function Dashboard() {
   const applyFilters = () => {
     let filtered = [...data];
 
-    // Filter by date
     if (filterDate) {
       filtered = filtered.filter(row => {
         const rowDate = parseDate(row.tanggal);
@@ -70,7 +65,6 @@ export default function Dashboard() {
       });
     }
 
-    // Filter by time range
     if (filterStartTime || filterEndTime) {
       filtered = filtered.filter(row => {
         const rowTime = parseTime(row.waktu);
@@ -108,13 +102,15 @@ export default function Dashboard() {
           const timeCell = row.c[1];
           const tempCell = row.c[2];
           const humidCell = row.c[3];
+          const airQualityCell = row.c[4];  // Kolom E untuk kualitas udara
           
           return {
             id: index,
             tanggal: dateCell ? (dateCell.f || dateCell.v || '-') : '-',
             waktu: timeCell ? (timeCell.f || timeCell.v || '-') : '-',
             suhu: tempCell?.v || '-',
-            kelembapan: humidCell?.v || '-'
+            kelembapan: humidCell?.v || '-',
+            kualitasUdara: airQualityCell?.v || '-'
           };
         });
         
@@ -133,6 +129,15 @@ export default function Dashboard() {
     }
   };
 
+  const getAirQualityStatus = (ppm) => {
+    if (ppm === '-') return { text: '-', color: '#999' };
+    const value = parseFloat(ppm);
+    if (value < 400) return { text: 'Baik', color: '#28a745' };
+    if (value < 1000) return { text: 'Sedang', color: '#ffc107' };
+    if (value < 2000) return { text: 'Buruk', color: '#fd7e14' };
+    return { text: 'Bahaya', color: '#dc3545' };
+  };
+
   const getLatestData = () => {
     if (data.length === 0) return null;
     return data[0];
@@ -145,7 +150,7 @@ export default function Dashboard() {
     <div className="container">
       <div className="header">
         <h1>🌡️ Monitoring Ruang Server</h1>
-        <p className="subtitle">Sistem Pemantauan Suhu & Kelembapan Real-time</p>
+        <p className="subtitle">Sistem Pemantauan Suhu, Kelembapan & Kualitas Udara Real-time</p>
       </div>
 
       {/* Card Data Terkini */}
@@ -166,6 +171,17 @@ export default function Dashboard() {
               <div className="card-content">
                 <div className="card-label">Kelembapan</div>
                 <div className="card-value">{latest.kelembapan}%</div>
+              </div>
+            </div>
+            
+            <div className="card airquality">
+              <div className="card-icon">🌫️</div>
+              <div className="card-content">
+                <div className="card-label">Kualitas Udara</div>
+                <div className="card-value">{latest.kualitasUdara} PPM</div>
+                <div className="card-status" style={{color: getAirQualityStatus(latest.kualitasUdara).color}}>
+                  {getAirQualityStatus(latest.kualitasUdara).text}
+                </div>
               </div>
             </div>
             
@@ -262,27 +278,38 @@ export default function Dashboard() {
                   <th>Waktu</th>
                   <th>Suhu (°C)</th>
                   <th>Kelembapan (%)</th>
+                  <th>Kualitas Udara (PPM)</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {displayData.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="no-data">
+                    <td colSpan="7" className="no-data">
                       {(filterDate || filterStartTime || filterEndTime) 
                         ? '🔍 Tidak ada data yang sesuai dengan filter'
                         : 'Belum ada data tersimpan'}
                     </td>
                   </tr>
                 ) : (
-                  displayData.map((row, index) => (
-                    <tr key={row.id}>
-                      <td>{index + 1}</td>
-                      <td>{row.tanggal}</td>
-                      <td>{row.waktu}</td>
-                      <td className="temp-value">{row.suhu}</td>
-                      <td className="humid-value">{row.kelembapan}</td>
-                    </tr>
-                  ))
+                  displayData.map((row, index) => {
+                    const airStatus = getAirQualityStatus(row.kualitasUdara);
+                    return (
+                      <tr key={row.id}>
+                        <td>{index + 1}</td>
+                        <td>{row.tanggal}</td>
+                        <td>{row.waktu}</td>
+                        <td className="temp-value">{row.suhu}</td>
+                        <td className="humid-value">{row.kelembapan}</td>
+                        <td className="air-value">{row.kualitasUdara}</td>
+                        <td>
+                          <span className="status-badge" style={{backgroundColor: airStatus.color}}>
+                            {airStatus.text}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -296,7 +323,7 @@ export default function Dashboard() {
 
       <style jsx>{`
         .container {
-          max-width: 1200px;
+          max-width: 1400px;
           margin: 0 auto;
           padding: 20px;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
@@ -380,6 +407,11 @@ export default function Dashboard() {
           color: white;
         }
 
+        .card.airquality {
+          background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+          color: white;
+        }
+
         .card.time {
           background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
           color: white;
@@ -412,6 +444,13 @@ export default function Dashboard() {
           font-size: 0.9rem;
           opacity: 0.8;
           margin-top: 5px;
+        }
+
+        .card-status {
+          font-size: 1rem;
+          font-weight: 600;
+          margin-top: 5px;
+          text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
         }
 
         .filter-section {
@@ -604,6 +643,20 @@ export default function Dashboard() {
 
         .humid-value {
           color: #f5576c;
+          font-weight: 600;
+        }
+
+        .air-value {
+          color: #38f9d7;
+          font-weight: 600;
+        }
+
+        .status-badge {
+          display: inline-block;
+          padding: 4px 12px;
+          border-radius: 12px;
+          color: white;
+          font-size: 0.85rem;
           font-weight: 600;
         }
 
