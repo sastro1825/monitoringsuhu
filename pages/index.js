@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 
 export default function Dashboard() {
-  const [data, setData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
+  const [allData, setAllData] = useState([]);
+  const [displayData, setDisplayData] = useState([]);
+  const [latestData, setLatestData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -17,13 +18,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 300000);
+    // Refresh setiap 5 detik untuk data realtime
+    const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
     applyFilters();
-  }, [data, filterDate, filterStartTime, filterEndTime]);
+  }, [allData, filterDate, filterStartTime, filterEndTime]);
 
   const parseDate = (dateStr) => {
     if (!dateStr || dateStr === '-') return null;
@@ -50,7 +52,7 @@ export default function Dashboard() {
   };
 
   const applyFilters = () => {
-    let filtered = [...data];
+    let filtered = [...allData];
 
     if (filterDate) {
       filtered = filtered.filter(row => {
@@ -77,7 +79,9 @@ export default function Dashboard() {
       });
     }
 
-    setFilteredData(filtered);
+    // Batasi hanya 10 data terbaru untuk riwayat
+    const limitedData = filtered.slice(0, 10);
+    setDisplayData(limitedData);
   };
 
   const clearFilters = () => {
@@ -102,7 +106,9 @@ export default function Dashboard() {
           const timeCell = row.c[1];
           const tempCell = row.c[2];
           const humidCell = row.c[3];
-          const airQualityCell = row.c[4];  // Kolom E untuk kualitas udara
+          const airQualityCell = row.c[4];
+          const ipCell = row.c[5];
+          const rssiCell = row.c[6];
           
           return {
             id: index,
@@ -110,14 +116,18 @@ export default function Dashboard() {
             waktu: timeCell ? (timeCell.f || timeCell.v || '-') : '-',
             suhu: tempCell?.v || '-',
             kelembapan: humidCell?.v || '-',
-            kualitasUdara: airQualityCell?.v || '-'
+            kualitasUdara: airQualityCell?.v || '-',
+            ip: ipCell?.v || '-',
+            rssi: rssiCell?.v || '-'
           };
         });
         
-        setData(formattedData);
+        setAllData(formattedData);
+        setLatestData(formattedData[0] || null);
         setLastUpdate(new Date().toLocaleString('id-ID'));
       } else {
-        setData([]);
+        setAllData([]);
+        setLatestData(null);
       }
       
       setLoading(false);
@@ -138,31 +148,61 @@ export default function Dashboard() {
     return { text: 'Bahaya', color: '#dc3545' };
   };
 
-  const getLatestData = () => {
-    if (data.length === 0) return null;
-    return data[0];
+  const getSignalStatus = (rssi) => {
+    if (rssi === '-') return { text: 'Tidak Terhubung', color: '#dc3545', icon: '📡' };
+    const value = parseInt(rssi);
+    if (value > -50) return { text: 'Excellent', color: '#28a745', icon: '📶' };
+    if (value > -60) return { text: 'Good', color: '#28a745', icon: '📶' };
+    if (value > -70) return { text: 'Fair', color: '#ffc107', icon: '📶' };
+    return { text: 'Weak', color: '#fd7e14', icon: '📶' };
   };
-
-  const displayData = filteredData.length > 0 || filterDate || filterStartTime || filterEndTime ? filteredData : data;
-  const latest = getLatestData();
 
   return (
     <div className="container">
       <div className="header">
-        <h1>🌡️ Monitoring Kos Ridho</h1>
+        <h1>🌡️ Monitoring Ruang Server</h1>
         <p className="subtitle">Sistem Pemantauan Suhu, Kelembapan & Kualitas Udara Real-time</p>
       </div>
 
+      {/* Status WiFi ESP32 */}
+      {latestData && (
+        <div className="wifi-status">
+          <div className="wifi-info">
+            <span className="wifi-icon">{getSignalStatus(latestData.rssi).icon}</span>
+            <div>
+              <div className="wifi-label">Status ESP32</div>
+              <div className="wifi-value">
+                {latestData.ip !== '-' ? (
+                  <>
+                    <span style={{color: '#28a745'}}>● Terhubung</span>
+                    <span className="wifi-detail">IP: {latestData.ip}</span>
+                  </>
+                ) : (
+                  <span style={{color: '#dc3545'}}>● Terputus</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="wifi-signal">
+            <div className="signal-label">Sinyal WiFi</div>
+            <div className="signal-value" style={{color: getSignalStatus(latestData.rssi).color}}>
+              {latestData.rssi !== '-' ? `${latestData.rssi} dBm` : 'N/A'}
+              <span className="signal-status">{getSignalStatus(latestData.rssi).text}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Card Data Terkini */}
       <div className="current-data">
-        <h2>Data Terkini</h2>
-        {latest ? (
+        <h2>📊 Data Terkini (Update Setiap 5 Detik)</h2>
+        {latestData ? (
           <div className="cards">
             <div className="card temperature">
               <div className="card-icon">🌡️</div>
               <div className="card-content">
                 <div className="card-label">Suhu</div>
-                <div className="card-value">{latest.suhu}°C</div>
+                <div className="card-value">{latestData.suhu}°C</div>
               </div>
             </div>
             
@@ -170,7 +210,7 @@ export default function Dashboard() {
               <div className="card-icon">💧</div>
               <div className="card-content">
                 <div className="card-label">Kelembapan</div>
-                <div className="card-value">{latest.kelembapan}%</div>
+                <div className="card-value">{latestData.kelembapan}%</div>
               </div>
             </div>
             
@@ -178,9 +218,9 @@ export default function Dashboard() {
               <div className="card-icon">🌫️</div>
               <div className="card-content">
                 <div className="card-label">Kualitas Udara</div>
-                <div className="card-value">{latest.kualitasUdara} PPM</div>
-                <div className="card-status" style={{color: getAirQualityStatus(latest.kualitasUdara).color}}>
-                  {getAirQualityStatus(latest.kualitasUdara).text}
+                <div className="card-value">{latestData.kualitasUdara} PPM</div>
+                <div className="card-status" style={{color: getAirQualityStatus(latestData.kualitasUdara).color}}>
+                  {getAirQualityStatus(latestData.kualitasUdara).text}
                 </div>
               </div>
             </div>
@@ -189,8 +229,8 @@ export default function Dashboard() {
               <div className="card-icon">🕐</div>
               <div className="card-content">
                 <div className="card-label">Waktu Update</div>
-                <div className="card-value small">{latest.waktu}</div>
-                <div className="card-date">{latest.tanggal}</div>
+                <div className="card-value small">{latestData.waktu}</div>
+                <div className="card-date">{latestData.tanggal}</div>
               </div>
             </div>
           </div>
@@ -242,15 +282,15 @@ export default function Dashboard() {
         
         {(filterDate || filterStartTime || filterEndTime) && (
           <div className="filter-info">
-            📊 Menampilkan {displayData.length} dari {data.length} data
+            📊 Menampilkan {displayData.length} dari {allData.length} data
           </div>
         )}
       </div>
 
-      {/* Tabel Riwayat Data */}
+      {/* Tabel Riwayat Data - Maksimal 10 */}
       <div className="history-section">
         <div className="section-header">
-          <h2>Riwayat Data</h2>
+          <h2>📜 10 Data Terbaru</h2>
           <button onClick={fetchData} className="refresh-btn" disabled={loading}>
             {loading ? '⏳ Loading...' : '🔄 Refresh'}
           </button>
@@ -266,7 +306,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {loading && data.length === 0 ? (
+        {loading && allData.length === 0 ? (
           <div className="loading">Memuat data...</div>
         ) : (
           <div className="table-container">
@@ -318,7 +358,7 @@ export default function Dashboard() {
       </div>
 
       <footer className="footer">
-        <p>💡 Tips: Dashboard ini refresh otomatis setiap 5 menit</p>
+        <p>💡 Dashboard refresh otomatis setiap 5 detik | Riwayat menampilkan 10 data terbaru</p>
       </footer>
 
       <style jsx>{`
@@ -348,6 +388,72 @@ export default function Dashboard() {
           font-size: 1.1rem;
           opacity: 0.9;
           margin-top: 10px;
+        }
+
+        .wifi-status {
+          background: white;
+          border-radius: 15px;
+          padding: 20px 30px;
+          margin-bottom: 20px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 20px;
+        }
+
+        .wifi-info {
+          display: flex;
+          align-items: center;
+          gap: 15px;
+        }
+
+        .wifi-icon {
+          font-size: 2.5rem;
+        }
+
+        .wifi-label {
+          font-size: 0.85rem;
+          color: #666;
+          margin-bottom: 5px;
+        }
+
+        .wifi-value {
+          font-size: 1.1rem;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          gap: 15px;
+        }
+
+        .wifi-detail {
+          font-size: 0.9rem;
+          color: #666;
+          font-weight: normal;
+        }
+
+        .wifi-signal {
+          text-align: right;
+        }
+
+        .signal-label {
+          font-size: 0.85rem;
+          color: #666;
+          margin-bottom: 5px;
+        }
+
+        .signal-value {
+          font-size: 1.3rem;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .signal-status {
+          font-size: 0.85rem;
+          opacity: 0.8;
         }
 
         .current-data {
@@ -684,6 +790,15 @@ export default function Dashboard() {
 
           .header h1 {
             font-size: 1.8rem;
+          }
+
+          .wifi-status {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+
+          .wifi-signal {
+            text-align: left;
           }
 
           .cards {
