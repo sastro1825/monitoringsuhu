@@ -8,6 +8,11 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
   
+  // System logs state
+  const [systemLogs, setSystemLogs] = useState({ success: [], error: [] });
+  const [showLogs, setShowLogs] = useState(false);
+  const [logLoading, setLogLoading] = useState(false);
+  
   // Filter states
   const [filterDate, setFilterDate] = useState('');
   const [filterStartTime, setFilterStartTime] = useState('');
@@ -15,6 +20,7 @@ export default function Dashboard() {
 
   const SPREADSHEET_ID = '1Cl3v9gd8esOjG5CigdGmeFeK_9ik_Llf9LclvS_R03c';
   const SHEET_NAME = 'Sheet1';
+  const VERCEL_API = 'https://monitoringiot-seven.vercel.app/api/sensor'; // Ganti dengan URL Anda
 
   useEffect(() => {
     fetchData();
@@ -90,6 +96,31 @@ export default function Dashboard() {
     setFilterEndTime('');
   };
 
+  // Fetch system logs
+  const fetchSystemLogs = async () => {
+    try {
+      setLogLoading(true);
+      const response = await fetch(`${VERCEL_API}?action=logs`);
+      const data = await response.json();
+      
+      if (data.success && data.logs) {
+        setSystemLogs(data.logs);
+      }
+      setLogLoading(false);
+    } catch (err) {
+      console.error('Error fetching logs:', err);
+      setLogLoading(false);
+    }
+  };
+
+  // Toggle log viewer
+  const toggleLogs = () => {
+    if (!showLogs) {
+      fetchSystemLogs();
+    }
+    setShowLogs(!showLogs);
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -102,13 +133,32 @@ export default function Dashboard() {
       
       if (json.table.rows && json.table.rows.length > 0) {
         const formattedData = json.table.rows.slice(1).reverse().map((row, index) => {
-          const dateCell = row.c[0];
-          const timeCell = row.c[1];
-          const tempCell = row.c[2];
-          const humidCell = row.c[3];
-          const airQualityCell = row.c[4];
-          const ipCell = row.c[5];
-          const rssiCell = row.c[6];
+          // Mapping kolom sesuai Google Sheets:
+          // A=Tanggal, B=Waktu, C=Suhu, D=Kelembapan, E=CO2, F=ISPU, G=Status, H=IP, I=RSSI
+          const dateCell = row.c[0];   // A - Tanggal
+          const timeCell = row.c[1];   // B - Waktu
+          const tempCell = row.c[2];   // C - Suhu
+          const humidCell = row.c[3];  // D - Kelembapan
+          const co2Cell = row.c[4];    // E - CO2
+          const ispuCell = row.c[5];   // F - ISPU
+          const statusCell = row.c[6]; // G - Status
+          const ipCell = row.c[7];     // H - IP
+          const rssiCell = row.c[8];   // I - RSSI
+          
+          // Debug: Print first row untuk cek mapping
+          if (index === 0) {
+            console.log('Latest row data:', {
+              tanggal: dateCell?.v,
+              waktu: timeCell?.v,
+              suhu: tempCell?.v,
+              kelembapan: humidCell?.v,
+              co2: co2Cell?.v,
+              ispu: ispuCell?.v,
+              status: statusCell?.v,
+              ip: ipCell?.v,
+              rssi: rssiCell?.v
+            });
+          }
           
           return {
             id: index,
@@ -116,7 +166,9 @@ export default function Dashboard() {
             waktu: timeCell ? (timeCell.f || timeCell.v || '-') : '-',
             suhu: tempCell?.v || '-',
             kelembapan: humidCell?.v || '-',
-            kualitasUdara: airQualityCell?.v || '-',
+            kualitasUdara: co2Cell?.v || '-',
+            ispu: ispuCell?.v || '-',
+            status: statusCell?.v || '-',
             ip: ipCell?.v || '-',
             rssi: rssiCell?.v || '-'
           };
@@ -139,13 +191,14 @@ export default function Dashboard() {
     }
   };
 
-  const getAirQualityStatus = (ppm) => {
-    if (ppm === '-') return { text: '-', color: '#999' };
-    const value = parseFloat(ppm);
-    if (value < 400) return { text: 'Baik', color: '#28a745' };
-    if (value < 1000) return { text: 'Sedang', color: '#ffc107' };
-    if (value < 2000) return { text: 'Buruk', color: '#fd7e14' };
-    return { text: 'Bahaya', color: '#dc3545' };
+  const getAirQualityStatus = (ispu) => {
+    if (ispu === '-') return { text: '-', color: '#999' };
+    const value = parseFloat(ispu);
+    if (value <= 50) return { text: 'Baik', color: '#28a745' };
+    if (value <= 100) return { text: 'Sedang', color: '#ffc107' };
+    if (value <= 200) return { text: 'Tidak Sehat', color: '#fd7e14' };
+    if (value <= 300) return { text: 'Sangat Tidak Sehat', color: '#dc3545' };
+    return { text: 'Berbahaya', color: '#8b0000' };
   };
 
   const getSignalStatus = (rssi) => {
@@ -217,10 +270,11 @@ export default function Dashboard() {
             <div className="card airquality">
               <div className="card-icon">🌫️</div>
               <div className="card-content">
-                <div className="card-label">Kualitas Udara</div>
-                <div className="card-value">{latestData.kualitasUdara} PPM</div>
-                <div className="card-status" style={{color: getAirQualityStatus(latestData.kualitasUdara).color}}>
-                  {getAirQualityStatus(latestData.kualitasUdara).text}
+                <div className="card-label">CO2</div>
+                <div className="card-value">{latestData.kualitasUdara} ppm</div>
+                <div className="card-sublabel">ISPU: {latestData.ispu}</div>
+                <div className="card-status" style={{color: getAirQualityStatus(latestData.ispu).color}}>
+                  {latestData.status !== '-' ? latestData.status : getAirQualityStatus(latestData.ispu).text}
                 </div>
               </div>
             </div>
@@ -243,7 +297,12 @@ export default function Dashboard() {
 
       {/* Filter Section */}
       <div className="filter-section">
-        <h3>🔍 Filter Data</h3>
+        <div className="filter-header">
+          <h3>🔍 Filter Data</h3>
+          <button onClick={toggleLogs} className="log-btn">
+            {showLogs ? '❌ Tutup Log' : '📋 Lihat System Log'}
+          </button>
+        </div>
         <div className="filter-controls">
           <div className="filter-group">
             <label>Tanggal:</label>
@@ -287,6 +346,73 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* System Logs Section */}
+      {showLogs && (
+        <div className="logs-section">
+          <div className="logs-header">
+            <h3>📋 System Logs (Real-time)</h3>
+            <button onClick={fetchSystemLogs} className="refresh-log-btn" disabled={logLoading}>
+              {logLoading ? '⏳ Loading...' : '🔄 Refresh Logs'}
+            </button>
+          </div>
+
+          <div className="logs-stats">
+            <div className="stat-item success">
+              <span className="stat-icon">✅</span>
+              <div>
+                <div className="stat-label">Sukses</div>
+                <div className="stat-value">{systemLogs.total?.success || 0}</div>
+              </div>
+            </div>
+            <div className="stat-item error">
+              <span className="stat-icon">❌</span>
+              <div>
+                <div className="stat-label">Error</div>
+                <div className="stat-value">{systemLogs.total?.error || 0}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="logs-container">
+            {/* Error Logs */}
+            {systemLogs.error && systemLogs.error.length > 0 && (
+              <div className="log-group error-group">
+                <h4>❌ Error Logs</h4>
+                <div className="log-list">
+                  {systemLogs.error.map((log, index) => (
+                    <div key={index} className="log-item error-log">
+                      <div className="log-time">{log.time}</div>
+                      <div className="log-message">{log.message}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Success Logs */}
+            {systemLogs.success && systemLogs.success.length > 0 && (
+              <div className="log-group success-group">
+                <h4>✅ Success Logs (20 Terbaru)</h4>
+                <div className="log-list">
+                  {systemLogs.success.map((log, index) => (
+                    <div key={index} className="log-item success-log">
+                      <div className="log-time">{log.time}</div>
+                      <div className="log-message">{log.message}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {systemLogs.success?.length === 0 && systemLogs.error?.length === 0 && (
+              <div className="no-logs">
+                📝 Belum ada log. Data akan muncul saat ESP32 mengirim data.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Tabel Riwayat Data - Maksimal 10 */}
       <div className="history-section">
         <div className="section-header">
@@ -318,14 +444,15 @@ export default function Dashboard() {
                   <th>Waktu</th>
                   <th>Suhu (°C)</th>
                   <th>Kelembapan (%)</th>
-                  <th>Kualitas Udara (PPM)</th>
+                  <th>CO2 (PPM)</th>
+                  <th>ISPU</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {displayData.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="no-data">
+                    <td colSpan="8" className="no-data">
                       {(filterDate || filterStartTime || filterEndTime) 
                         ? '🔍 Tidak ada data yang sesuai dengan filter'
                         : 'Belum ada data tersimpan'}
@@ -333,7 +460,7 @@ export default function Dashboard() {
                   </tr>
                 ) : (
                   displayData.map((row, index) => {
-                    const airStatus = getAirQualityStatus(row.kualitasUdara);
+                    const airStatus = getAirQualityStatus(row.ispu);
                     return (
                       <tr key={row.id}>
                         <td>{index + 1}</td>
@@ -342,9 +469,10 @@ export default function Dashboard() {
                         <td className="temp-value">{row.suhu}</td>
                         <td className="humid-value">{row.kelembapan}</td>
                         <td className="air-value">{row.kualitasUdara}</td>
+                        <td className="ispu-value">{row.ispu}</td>
                         <td>
                           <span className="status-badge" style={{backgroundColor: airStatus.color}}>
-                            {airStatus.text}
+                            {row.status}
                           </span>
                         </td>
                       </tr>
@@ -537,6 +665,12 @@ export default function Dashboard() {
           margin-bottom: 5px;
         }
 
+        .card-sublabel {
+          font-size: 0.85rem;
+          opacity: 0.9;
+          margin-top: 3px;
+        }
+
         .card-value {
           font-size: 2rem;
           font-weight: bold;
@@ -567,11 +701,181 @@ export default function Dashboard() {
           box-shadow: 0 10px 30px rgba(0,0,0,0.2);
         }
 
-        .filter-section h3 {
-          margin-top: 0;
+        .filter-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
           margin-bottom: 20px;
+          flex-wrap: wrap;
+          gap: 15px;
+        }
+
+        .filter-section h3 {
+          margin: 0;
           color: #333;
           font-size: 1.3rem;
+        }
+
+        .log-btn {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 0.9rem;
+          font-weight: 600;
+          transition: all 0.3s;
+        }
+
+        .log-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .logs-section {
+          background: white;
+          border-radius: 15px;
+          padding: 25px;
+          margin-bottom: 30px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .logs-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+          gap: 15px;
+        }
+
+        .logs-header h3 {
+          margin: 0;
+          color: #333;
+          font-size: 1.3rem;
+        }
+
+        .refresh-log-btn {
+          background: #43e97b;
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 0.9rem;
+          font-weight: 600;
+          transition: all 0.3s;
+        }
+
+        .refresh-log-btn:hover:not(:disabled) {
+          background: #38d66f;
+          transform: translateY(-2px);
+        }
+
+        .refresh-log-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .logs-stats {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 15px;
+          margin-bottom: 20px;
+        }
+
+        .stat-item {
+          padding: 15px 20px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          gap: 15px;
+        }
+
+        .stat-item.success {
+          background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);
+        }
+
+        .stat-item.error {
+          background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+
+        .stat-icon {
+          font-size: 2rem;
+        }
+
+        .stat-label {
+          font-size: 0.85rem;
+          color: #333;
+          opacity: 0.8;
+        }
+
+        .stat-value {
+          font-size: 1.8rem;
+          font-weight: bold;
+          color: #333;
+        }
+
+        .logs-container {
+          display: grid;
+          gap: 20px;
+        }
+
+        .log-group h4 {
+          margin: 0 0 15px 0;
+          color: #333;
+          font-size: 1.1rem;
+        }
+
+        .log-list {
+          max-height: 400px;
+          overflow-y: auto;
+          background: #f8f9fa;
+          border-radius: 8px;
+          padding: 15px;
+        }
+
+        .log-item {
+          padding: 12px 15px;
+          margin-bottom: 10px;
+          border-radius: 6px;
+          border-left: 4px solid;
+        }
+
+        .log-item:last-child {
+          margin-bottom: 0;
+        }
+
+        .success-log {
+          background: #d4edda;
+          border-left-color: #28a745;
+        }
+
+        .error-log {
+          background: #f8d7da;
+          border-left-color: #dc3545;
+        }
+
+        .log-time {
+          font-size: 0.8rem;
+          color: #666;
+          margin-bottom: 5px;
+          font-weight: 600;
+        }
+
+        .log-message {
+          font-size: 0.9rem;
+          color: #333;
+          line-height: 1.4;
+        }
+
+        .no-logs {
+          text-align: center;
+          padding: 40px;
+          color: #666;
+          background: #f8f9fa;
+          border-radius: 8px;
         }
 
         .filter-controls {
@@ -755,6 +1059,12 @@ export default function Dashboard() {
         .air-value {
           color: #38f9d7;
           font-weight: 600;
+        }
+
+        .ispu-value {
+          color: #764ba2;
+          font-weight: 600;
+          font-size: 1.1rem;
         }
 
         .status-badge {
